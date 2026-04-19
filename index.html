@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CardStrategy — 申卡策略沙盘</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f6f6f4;
+    --bg-tertiary: #f0efe9;
+    --text-primary: #1a1a18;
+    --text-secondary: #6b6b67;
+    --border-light: rgba(0,0,0,0.08);
+    --border-medium: rgba(0,0,0,0.14);
+    --blue: #185FA5;
+    --blue-bg: #E6F1FB;
+    --blue-text: #0C447C;
+    --green-bg: #EAF3DE;
+    --green-text: #3B6D11;
+    --amber-bg: #FAEEDA;
+    --amber-text: #854F0B;
+    --red-bg: #FCEBEB;
+    --red-text: #A32D2D;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-primary: #1e1e1c;
+      --bg-secondary: #2a2a28;
+      --bg-tertiary: #232321;
+      --text-primary: #f0efe9;
+      --text-secondary: #9a9a96;
+      --border-light: rgba(255,255,255,0.08);
+      --border-medium: rgba(255,255,255,0.14);
+      --blue-bg: #042C53;
+      --blue-text: #85B7EB;
+      --green-bg: #173404;
+      --green-text: #C0DD97;
+      --amber-bg: #412402;
+      --amber-text: #FAC775;
+      --red-bg: #501313;
+      --red-text: #F09595;
+    }
+  }
+  html, body { min-height: 100vh; background: var(--bg-tertiary); font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; color: var(--text-primary); font-size: 16px; line-height: 1.6; }
+  #root { min-height: 100vh; }
+  textarea { font-family: inherit; width: 100%; padding: 10px 12px; border: 0.5px solid var(--border-medium); border-radius: var(--radius-md); font-size: 14px; background: var(--bg-primary); color: var(--text-primary); resize: vertical; line-height: 1.6; outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+  textarea::placeholder { color: var(--text-secondary); }
+  textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(24,95,165,0.12); }
+  input[type=range] { width: 100%; accent-color: var(--blue); cursor: pointer; }
+  button { font-family: inherit; cursor: pointer; transition: background 0.12s, opacity 0.12s, transform 0.1s; }
+  button:active { transform: scale(0.98); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius-md); font-size: 13px; border: 0.5px solid var(--border-medium); background: var(--bg-primary); color: var(--text-primary); }
+  .btn:hover { background: var(--bg-secondary); }
+  .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); font-size: 14px; padding: 9px 20px; }
+  .btn-primary:hover { background: #0C447C; border-color: #0C447C; }
+  .btn-primary:disabled { background: var(--bg-secondary); color: var(--text-secondary); border-color: var(--border-light); cursor: default; transform: none; }
+  .card { background: var(--bg-primary); border: 0.5px solid var(--border-light); border-radius: var(--radius-lg); padding: 1.25rem; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 5px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; background: var(--bg-secondary); color: var(--text-secondary); font-weight: 500; font-size: 12px; border-bottom: 0.5px solid var(--border-medium); }
+  td { padding: 9px 10px; border-bottom: 0.5px solid var(--border-light); color: var(--text-primary); vertical-align: top; font-size: 13px; line-height: 1.5; }
+  tr:last-child td { border-bottom: none; }
+  .section-title { font-size: 14px; font-weight: 500; padding-bottom: 8px; margin: 1.25rem 0 0.75rem; border-bottom: 0.5px solid var(--border-light); display: flex; align-items: center; gap: 6px; }
+  .skeleton { height: 13px; background: var(--bg-secondary); border-radius: 4px; margin-bottom: 10px; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+  strong { font-weight: 500; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState } = React;
+
+const SYSTEM_PROMPT = `# Role
+你是一名资深的美国信用卡申卡策略专家。你精通各大银行（Chase, Amex, BoA, Citi, US Bank等）的审批规则、风控模型以及各家酒店/航空积分价值。
+
+# Knowledge & Rules
+1. Chase 5/24 规则：过去24个月内若新开账户超过5个，基本不予批卡。
+2. Amex 限制：通常一个人最多持有5张Amex信用卡；注意 Amex 1-in-5 和 2-in-90 申卡节奏。
+3. BoA 2/3/4 规则：2个月内最多批2张，12个月内最多3张，24个月内最多4张。
+4. 积分估值参考：万豪（Marriott）约 0.7c/p，IHG 约 0.5c/p，Chase UR 约 1.6c/p，Amex MR 约 2c/p。
+
+# Workflow
+1. 数据解析：将用户的大白话输入转化为精确的"申卡时间轴"，今天的日期是 ${new Date().toLocaleDateString('zh-CN', {year:'numeric',month:'long',day:'numeric'})}。
+2. 状态评估：计算用户当前的 5/24 状态，检查是否触发了特定银行的红线。
+3. 方案生成：优先推荐符合用户需求且当前通过率最高的卡，按收益分类排序。
+4. 时间规划：给出未来6个月的"申卡路线图"，包括具体的等待建议。
+
+# Output Format
+请严格按以下结构输出，使用清晰的 Markdown 格式：
+
+### 📊 你的信用概览
+- **当前 5/24 状态**：[X]/5
+- **信用分评级**：[评级描述]
+- **风险红线**：[识别到的风险点，如无则写"暂无明显风险"]
+
+### 🚀 推荐申卡路线图
+| 推荐卡种 | 收益类型 | 推荐理由 | 预估通过率 |
+| :--- | :--- | :--- | :--- |
+| [卡名] | [如：万豪积分] | [理由] | [高/中/低] |
+
+### 📅 未来6个月执行表
+- **立即可申**：[操作建议]
+- **[月份/时间节点]**：[操作建议]
+- **注意事项**：[重要提醒]`;
+
+const EXAMPLE = `我去年6月开了Chase Sapphire Preferred，今年1月开了张Amex Gold，3月刚开了Capital One Venture。现在想搞一张能攒万豪或IHG积分的卡，顺便还想申一张BoA的卡。请帮我分析一下现在的情况。`;
+
+function bold(text) {
+  return text.split(/\*\*(.*?)\*\*/g).map((p,i) =>
+    i%2===1 ? <strong key={i}>{p}</strong> : p
+  );
+}
+
+function MarkdownResult({ content }) {
+  const lines = content.split('\n');
+  const out = [];
+  let headers = null, rows = [];
+
+  const flushTable = (key) => {
+    if (!headers) return;
+    out.push(
+      <div key={key} style={{overflowX:'auto',margin:'8px 0 4px'}}>
+        <table>
+          <thead><tr>{headers.map((h,j)=><th key={j}>{h}</th>)}</tr></thead>
+          <tbody>{rows.map((row,j)=>(
+            <tr key={j}>{row.map((cell,k)=>{
+              const t = cell.trim();
+              if(t==='高') return <td key={k}><span className="badge" style={{background:'var(--green-bg)',color:'var(--green-text)'}}>高</span></td>;
+              if(t==='中') return <td key={k}><span className="badge" style={{background:'var(--amber-bg)',color:'var(--amber-text)'}}>中</span></td>;
+              if(t==='低') return <td key={k}><span className="badge" style={{background:'var(--red-bg)',color:'var(--red-text)'}}>低</span></td>;
+              return <td key={k}>{bold(cell)}</td>;
+            })}</tr>
+          ))}</tbody>
+        </table>
+      </div>
+    );
+    headers = null; rows = [];
+  };
+
+  lines.forEach((line, i) => {
+    if (line.startsWith('|')) {
+      const cells = line.split('|').slice(1,-1).map(c=>c.trim()).filter(c=>!/^[-: ]+$/.test(c));
+      if (!cells.length) return;
+      if (!headers) headers = cells;
+      else rows.push(cells);
+      return;
+    }
+    flushTable(`t${i}`);
+    if (line.startsWith('### ')) {
+      out.push(<div key={i} className="section-title">{line.slice(4)}</div>);
+    } else if (line.match(/^[-*] /)) {
+      out.push(
+        <div key={i} style={{display:'flex',gap:8,margin:'5px 0',fontSize:13,lineHeight:1.6}}>
+          <span style={{color:'var(--text-secondary)',flexShrink:0}}>•</span>
+          <span>{bold(line.slice(2))}</span>
+        </div>
+      );
+    } else if (line.trim()) {
+      out.push(<p key={i} style={{fontSize:13,lineHeight:1.6,margin:'4px 0'}}>{bold(line)}</p>);
+    }
+  });
+  flushTable('tend');
+  return <div>{out}</div>;
+}
+
+function App() {
+  const [input, setInput] = useState('');
+  const [score, setScore] = useState(750);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState(null);
+
+  const scoreInfo = () => {
+    if (score >= 800) return { label:'卓越', bg:'var(--green-bg)', color:'var(--green-text)' };
+    if (score >= 740) return { label:'优秀', bg:'var(--blue-bg)', color:'var(--blue-text)' };
+    if (score >= 670) return { label:'良好', bg:'var(--amber-bg)', color:'var(--amber-text)' };
+    return { label:'一般', bg:'var(--red-bg)', color:'var(--red-text)' };
+  };
+
+  const analyze = async () => {
+    if (!input.trim() || loading) return;
+    setLoading(true); setResult(null); setErr(null);
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1200,
+          system: SYSTEM_PROMPT,
+          messages: [{ role:'user', content:`我的 FICO 信用分：${score}\n\n申卡情况与需求：${input}` }]
+        })
+      });
+      const data = await res.json();
+      const text = (data.content||[]).map(b=>b.text||'').join('');
+      if (!text) throw new Error();
+      setResult(text);
+    } catch {
+      setErr('分析请求失败，请检查网络后重试。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const si = scoreInfo();
+
+  return (
+    <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',padding:'2rem 1rem 3rem',background:'var(--bg-tertiary)'}}>
+      <div style={{width:'100%',maxWidth:680}}>
+
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+          <div style={{width:34,height:34,borderRadius:9,background:'var(--blue)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:13,fontWeight:600,flexShrink:0,letterSpacing:'-0.5px'}}>CS</div>
+          <div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:18,fontWeight:500}}>CardStrategy</span>
+              <span className="badge" style={{background:'var(--blue-bg)',color:'var(--blue-text)'}}>Beta</span>
+            </div>
+          </div>
+        </div>
+        <p style={{fontSize:13,color:'var(--text-secondary)',marginBottom:'1.5rem',lineHeight:1.6}}>
+          输入你的开卡记录与需求，AI 交叉比对银行风控规则，生成个性化申卡路线图
+        </p>
+
+        {/* Input Card */}
+        <div className="card" style={{marginBottom:12}}>
+
+          {/* Credit Score */}
+          <div style={{marginBottom:16}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+              <span style={{fontSize:12,color:'var(--text-secondary)',fontWeight:500,letterSpacing:'0.3px'}}>FICO 信用分</span>
+              <span className="badge" style={{background:si.bg,color:si.color,fontSize:12}}>
+                {score} · {si.label}
+              </span>
+            </div>
+            <input type="range" min="580" max="850" step="10" value={score} onChange={e=>setScore(+e.target.value)} />
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--text-secondary)',marginTop:4}}>
+              {['580','670','740','800','850'].map(v=><span key={v}>{v}</span>)}
+            </div>
+          </div>
+
+          {/* Text */}
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:12,color:'var(--text-secondary)',marginBottom:6,fontWeight:500}}>开卡记录与申卡需求</div>
+            <textarea
+              rows={4}
+              value={input}
+              onChange={e=>setInput(e.target.value)}
+              onKeyDown={e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)) analyze(); }}
+              placeholder="例：去年6月开了Chase Sapphire Preferred，今年1月开了Amex Gold，现在想搞一张能攒万豪积分的卡，还想申BoA……"
+            />
+            <div style={{fontSize:11,color:'var(--text-secondary)',marginTop:5,textAlign:'right'}}>⌘ + Enter 快速分析</div>
+          </div>
+
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <button className="btn" onClick={()=>{ setInput(EXAMPLE); setResult(null); }} style={{fontSize:12}}>
+              填入示例
+            </button>
+            {result && (
+              <button className="btn" onClick={()=>{ setResult(null); setInput(''); }} style={{fontSize:12}}>
+                重置
+              </button>
+            )}
+            <div style={{flex:1}}/>
+            <button className="btn-primary btn" onClick={analyze} disabled={loading||!input.trim()}>
+              {loading ? '分析中…' : '生成路线图 ↗'}
+            </button>
+          </div>
+        </div>
+
+        {/* Error */}
+        {err && (
+          <div style={{padding:'10px 14px',background:'var(--red-bg)',color:'var(--red-text)',borderRadius:8,fontSize:13,marginBottom:12}}>
+            ⚠ {err}
+          </div>
+        )}
+
+        {/* Loading */}
+        {loading && (
+          <div className="card">
+            <div style={{fontSize:12,color:'var(--text-secondary)',marginBottom:14}}>正在与各银行风控规则交叉比对…</div>
+            {[220,160,280,120,200].map((w,i)=>(
+              <div key={i} className="skeleton" style={{width:w}} />
+            ))}
+          </div>
+        )}
+
+        {/* Result */}
+        {result && !loading && (
+          <div className="card">
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',paddingBottom:10,marginBottom:4,borderBottom:'0.5px solid var(--border-light)'}}>
+              <span style={{fontSize:13,fontWeight:500}}>申卡分析报告</span>
+              <span style={{fontSize:11,color:'var(--text-secondary)'}}>AI 生成 · 仅供参考</span>
+            </div>
+            <MarkdownResult content={result} />
+          </div>
+        )}
+
+        <p style={{fontSize:11,color:'var(--text-secondary)',marginTop:16,textAlign:'center',lineHeight:1.7}}>
+          结果由 AI 生成，不构成金融建议。申卡前请自行核实各银行最新规则与政策。<br/>
+          Built with Claude API · CardStrategy Demo
+        </p>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
